@@ -10,7 +10,6 @@ from executor.execute_normal_move import execute_normal_move
 from executor.store_board_positions import store_board_positions
 from executor.get_current_fen import get_current_fen
 from executor.verify_move import verify_move
-from executor.move_piece import move_piece
 from executor.is_two_square_king_move import is_two_square_king_move
 from executor.processing_sync import processing_event
 
@@ -93,7 +92,7 @@ def _extract_board_position(root, auto_mode_var, color_indicator, update_status)
         logger.warning("Screenshot capture failed.")
         return None
     
-    boxes = get_positions(screenshot_image)
+    boxes, _, _ = get_positions(screenshot_image)
     if not boxes:
         logger.error("No chessboard found in screenshot.")
         root.after(0, lambda: update_status("\nNo board detected"))
@@ -233,9 +232,10 @@ def _execute_move(
         )
     else:
         logger.info("Executing normal (non-castling) move.")
+        execution_mode = root.execution_mode_var.get()
         success = execute_normal_move(
             board_positions, color_indicator, best_move, mate_flag,
-            updated_fen, root, auto_mode_var, update_status, btn_play
+            updated_fen, root, auto_mode_var, update_status, btn_play, execution_mode
         )
         if not success:
             logger.error("Normal move execution failed.")
@@ -292,7 +292,8 @@ def _perform_castling_move(
     """
     Perform the actual castling move and verify it.
     """
-    move_piece(color_indicator, best_move, board_positions, auto_mode_var, root, btn_play)
+    from executor.move_executor import drag_piece
+    drag_piece(color_indicator, best_move, board_positions, auto_mode_var, root, btn_play)
     
     status_msg = f"\nBest Move: {best_move}\nCastling move executed: {best_move}"
     if mate_flag:

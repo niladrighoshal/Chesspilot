@@ -93,17 +93,20 @@ def flip_board(fen):
 if __name__ == "__main__":
     # Ask for the color (w or b)
     image_path = "chess-screenshot.png"
-    boxes = get_positions(image_path)
-    color = input("Enter the color you are playing as (w or b): ").strip().lower()
-    
-    # Ensure valid input
-    while color not in ['w', 'b']:
-        print("Invalid input. Please enter 'w' for white or 'b' for black.")
+    boxes, _, _ = get_positions(image_path)
+    if boxes:
         color = input("Enter the color you are playing as (w or b): ").strip().lower()
 
-    # Get FEN for the board and print it
-    try:
-        fen = get_fen_from_position(color, boxes)
-        print(fen)
-    except ValueError as e:
-        print(f"Error: {e}")
+        # Ensure valid input
+        while color not in ['w', 'b']:
+            print("Invalid input. Please enter 'w' for white or 'b' for black.")
+            color = input("Enter the color you are playing as (w or b): ").strip().lower()
+
+        # Get FEN for the board and print it
+        try:
+            fen = get_fen_from_position(color, boxes)
+            print(fen)
+        except ValueError as e:
+            print(f"Error: {e}")
+    else:
+        print("Could not detect a chessboard in the image.")
