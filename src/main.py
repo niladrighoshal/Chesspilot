@@ -40,76 +40,44 @@ from executor import (
     chess_notation_to_index,
     execute_normal_move
 )
-from gui.set_window_icon import set_window_icon
-from gui.create_widget import create_widgets
-from gui.shortcuts import handle_esc_key, bind_shortcuts
-from gui.button_and_checkboxes import (
-    color_button,
-    action_button,
-    castling_checkboxes
-)
+from gui.new_app import ChessPilotGUI
+from gui.shortcuts import bind_shortcuts
+import time
+from board_detection import get_positions, get_fen_from_position
+from board_detection.side_detector import detect_side_from_fen
 from utils.speech import speak, get_piece_name
 
 class ChessPilot:
     def __init__(self, root):
         logger.info("Initializing ChessPilot application")
         self.root = root
-        self.root.title("ChessPilot")
-        self.root.geometry("350x350")
-        self.root.resizable(False, False)
-        self.root.attributes('-topmost', True)
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.gui = ChessPilotGUI(master=root)
 
         # Game state variables
         self.color_indicator = None
         self.last_fen = ""
         self.last_fen_by_color = {'w': None, 'b': None}
-        self.auto_mode_var = tk.BooleanVar(value=False)
         self.board_positions = {}
-        self.best_move_var = tk.StringVar()
-
-        # Speech settings
-        self.speech_volume_var = tk.DoubleVar(value=0.5)
-        self.speech_mute_var = tk.BooleanVar(value=False)
-
-        # Screenshot delay (0.0 to 1.0 seconds)
-        self.screenshot_delay_var = tk.DoubleVar(value=0.4)
-
-        # GUI settings
-        self.transparency_var = tk.DoubleVar(value=0.5)
-
-        # Board cropping parameters (unused until you set them)
-        self.chessboard_x = None
-        self.chessboard_y = None
-        self.square_size = None
-
-        # UI color scheme
-        self.bg_color = "#2D2D2D"
-        self.frame_color = "#373737"
-        self.accent_color = "#4CAF50"
-        self.text_color = "#FFFFFF"
-        self.hover_color = "#45a049"
         
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        self.style.configure("TScale", troughcolor=self.frame_color, background=self.bg_color)
-        self.style.configure("TCheckbutton", background=self.bg_color, foreground=self.text_color)
-        
-        set_window_icon(self)
-        create_widgets(self)
+        # Link GUI variables to the backend
+        self.auto_mode_var = self.gui.autoplay_var
+        self.best_move_var = self.gui.best_move_var
+        self.speech_volume_var = self.gui.volume_var
+        self.speech_mute_var = self.gui.mute_var
+        self.transparency_var = self.gui.transparency_var
+        self.side_var = self.gui.side_var
+        self.execution_mode_var = self.gui.execution_mode_var
+
+        # Bind GUI events
+        self.gui.play_button.config(command=self.process_move_thread)
+        self.gui.flip_button.config(command=self.flip_board)
+        self.gui.transparency_slider.config(command=self.set_transparency)
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         bind_shortcuts(self)
-
-        # Log initial window size for debugging
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        logger.debug(f"Initial window size: {width}x{height}")
-        
-
-        self.root.bind('<Escape>', self.take_esc_key)
         self.root.focus_set()
         logger.info("ChessPilot UI initialized")
-        
+
         # Initialize Stockfish at startup
         if not initialize_stockfish_at_startup():
             logger.warning("Stockfish initialization failed at startup - will retry when needed")
@@ -117,16 +85,44 @@ class ChessPilot:
         # Start the best move update loop
         threading.Thread(target=self.update_best_move_loop, daemon=True).start()
 
+        # Start auto-detection
+        threading.Thread(target=self.start_auto_detection, daemon=True).start()
+
+    def _auto_detect_side(self, frames):
+        """
+        Captures frames until a valid FEN is extracted to determine the player's side.
+        """
+        logger.info("Attempting to auto-detect side...")
+        while True:
+            screenshot = self.capture_board_screenshot()
+            if screenshot:
+                frames.append(screenshot)
+                boxes, _, _ = get_positions(screenshot)
+                if boxes:
+                    _, _, _, fen = get_fen_from_position('w', boxes) # Assume white to get a valid FEN
+                    if fen:
+                        # Detect side from piece placement, then get active color
+                        side = detect_side_from_fen(fen)
+                        _, _, _, fen_with_correct_side = get_fen_from_position(side, boxes)
+                        active_color = fen_with_correct_side.split()[1]
+                        return active_color
+            time.sleep(0.3) # Wait before retrying
+
+    def start_auto_detection(self):
+        self.update_status("Checking for chessboard on screen...")
+        side = self._auto_detect_side([])
+        if side:
+            self.update_status(f"Detected side: {'White' if side == 'w' else 'Black'}")
+            self.side_var.set(side)
+            self.color_indicator = side
+        else:
+            self.update_status("Could not detect chessboard. Please position the board on the screen.")
+
     def on_closing(self):
         """Handle application closing."""
         logger.info("Application closing - cleaning up Stockfish process")
         cleanup_stockfish()
         self.root.destroy()
-        
-    # Handle ESC key to return to color selection
-    def take_esc_key(self, event=None):
-        if self.color_indicator is not None:
-            handle_esc_key(self, event)
         
     # def log_button_sizes(self):
     #     w_w = self.btn_white.winfo_width()
@@ -136,42 +132,35 @@ class ChessPilot:
     #     logger.debug(f"[SIZE DEBUG] White button size: {w_w}×{w_h}")
     #     logger.debug(f"[SIZE DEBUG] Black button size: {b_w}×{b_h}")
 
-    def create_color_button(self, parent, text, color):
-        return color_button(self, parent, text, color)
-
-    def create_action_button(self, parent, text, command):
-        return action_button(self, parent, text, command)
-        
-    def create_castling_checkboxes(self):
-        castling_checkboxes(self)
-
     def update_last_fen_for_color(self, fen: str):
         parts = fen.split()
         placement, active_color = parts[0], parts[1]
         self.last_fen_by_color[active_color] = placement
         logger.debug(f"Updated last FEN for {active_color}: {placement}")
 
-    def set_color(self, color):
-        logger.info(f"Color selected: {'White' if color == 'w' else 'Black'}")
-        self.color_indicator = color
-        self.color_frame.pack_forget()
-        self.main_frame.pack(expand=True, fill=tk.BOTH)
-        self.btn_play.config(state=tk.NORMAL)
-        self.update_status(f"\nPlaying as {'White' if color == 'w' else 'Black'}")
-
     def flip_board(self):
-        if self.color_indicator == 'w':
-            self.set_color('b')
-        else:
-            self.set_color('w')
+        current_side = self.side_var.get()
+        new_side = 'b' if current_side == 'w' else 'w'
+        self.side_var.set(new_side)
+        self.color_indicator = new_side
+        self.update_status(f"Flipped side to {'White' if new_side == 'w' else 'Black'}")
 
     def update_status(self, message):
         logger.debug(f"Status update: {message.strip()}")
-        self.status_label.config(text=message)
+        self.gui.status_var.set(message)
         self.root.update_idletasks()
 
     def set_transparency(self, value):
         self.root.attributes("-alpha", value)
+
+    def toggle_auto_mode(self):
+        if self.auto_mode_var.get():
+            logger.info("Auto mode enabled")
+            self.gui.play_button.config(state=tk.DISABLED)
+            threading.Thread(target=auto_move_loop, args=(self,), daemon=True).start()
+        else:
+            logger.info("Auto mode disabled")
+            self.gui.play_button.config(state=tk.NORMAL)
 
     def process_move_thread(self):
         logger.info("Play Next Move button pressed; starting process_move thread")
@@ -181,44 +170,13 @@ class ChessPilot:
                 self.root,
                 self.color_indicator,
                 self.auto_mode_var,
-                self.btn_play,
                 self.board_positions,
                 self.update_status,
-                self.kingside_var,
-                self.queenside_var,
                 self.update_last_fen_for_color,
                 self.last_fen_by_color,
-                self.screenshot_delay_var,
             ),
             daemon=True,
         ).start()
-
-    def toggle_auto_mode(self):
-        if self.auto_mode_var.get():
-            logger.info("Auto mode enabled")
-            self.btn_play.config(state=tk.DISABLED)
-            # The auto_move_loop will handle initialization and side detection
-            threading.Thread(
-                target=auto_move_loop,
-                args=(
-                    self.root,
-                    self.color_indicator,
-                    self.auto_mode_var,
-                    self.btn_play,
-                    self.board_positions,
-                    self.last_fen_by_color,
-                    self.screenshot_delay_var,
-                    self.update_status,
-                    self.kingside_var,
-                    self.queenside_var,
-                    self.update_last_fen_for_color
-                ),
-                daemon=True
-            ).start()
-
-        else:
-            logger.info("Auto mode disabled")
-            self.btn_play.config(state=tk.NORMAL)
 
     def capture_board_screenshot(self):
         logger.debug("Capturing board screenshot via wrapper")
@@ -249,12 +207,8 @@ class ChessPilot:
 
     def adjust_castling_fen(self, fen: str):
         logger.debug(f"Adjusting castling rights for FEN: {fen}")
-        return update_fen_castling_rights(
-            self.color_indicator,
-            self.kingside_var,
-            self.queenside_var,
-            fen
-        )
+        # The new logic will always use the FEN as is, and let the engine decide about castling.
+        return fen
 
     def check_move_validity(self, before_fen: str, after_fen: str, move: str):
         logger.debug(f"Verifying move validity: {move}")

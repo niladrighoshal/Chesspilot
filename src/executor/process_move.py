@@ -22,14 +22,10 @@ def process_move(
     root,
     color_indicator,
     auto_mode_var,
-    btn_play,
     board_positions,
     update_status,
-    kingside_var,
-    queenside_var,
     update_last_fen_for_color,
     last_fen_by_color,
-    screenshot_delay_var,
 ):
     """
     Main function to process a chess move.
@@ -40,7 +36,7 @@ def process_move(
         return
     
     # Initialize processing state
-    _initialize_move_processing(root, btn_play, update_status)
+    _initialize_move_processing(root, update_status)
     
     try:
         # Extract board position
@@ -50,15 +46,15 @@ def process_move(
         
         # Get and execute the best move
         _process_best_move(
-            board_data, root, color_indicator, auto_mode_var, btn_play,
-            board_positions, update_status, kingside_var, queenside_var,
+            board_data, root, color_indicator, auto_mode_var,
+            board_positions, update_status,
             update_last_fen_for_color, last_fen_by_color
         )
         
     except Exception as e:
         _handle_processing_error(e, root, update_status, auto_mode_var)
     finally:
-        _finalize_move_processing(root, auto_mode_var, btn_play)
+        _finalize_move_processing(root, auto_mode_var)
 
 
 def _can_start_processing():
@@ -71,12 +67,12 @@ def _can_start_processing():
     return True
 
 
-def _initialize_move_processing(root, btn_play, update_status):
+def _initialize_move_processing(root, update_status):
     """
     Set up the initial state for move processing.
     """
     processing_event.set()
-    root.after(0, lambda: btn_play.config(state=tk.DISABLED))
+    root.gui.play_button.config(state=tk.DISABLED)
     root.after(0, lambda: update_status("\nAnalyzing board..."))
 
 
@@ -149,8 +145,8 @@ def _extract_fen_from_boxes(boxes, color_indicator, root, update_status, auto_mo
 
 
 def _process_best_move(
-    board_data, root, color_indicator, auto_mode_var, btn_play,
-    board_positions, update_status, kingside_var, queenside_var,
+    board_data, root, color_indicator, auto_mode_var,
+    board_positions, update_status,
     update_last_fen_for_color, last_fen_by_color
 ):
     """
@@ -158,7 +154,7 @@ def _process_best_move(
     """
     # Update FEN with castling rights and store board positions
     fen = _prepare_position_data(
-        board_data, color_indicator, kingside_var, queenside_var, board_positions
+        board_data, color_indicator, board_positions
     )
     
     # Get best move from engine
@@ -172,18 +168,16 @@ def _process_best_move(
     # Execute the move (castling or normal)
     _execute_move(
         best_move, fen, updated_fen, mate_flag, color_indicator,
-        board_positions, auto_mode_var, root, btn_play, update_status,
-        kingside_var, queenside_var, last_fen_by_color
+        board_positions, auto_mode_var, root, update_status,
+        last_fen_by_color
     )
 
 
-def _prepare_position_data(board_data, color_indicator, kingside_var, queenside_var, board_positions):
+def _prepare_position_data(board_data, color_indicator, board_positions):
     """
     Update FEN with castling rights and store board position data.
     """
-    fen = update_fen_castling_rights(
-        color_indicator, kingside_var, queenside_var, board_data['fen']
-    )
+    fen = board_data['fen']
     logger.debug(f"FEN after castling update: {fen}")
     
     store_board_positions(
@@ -216,84 +210,60 @@ def _calculate_best_move(root, fen, auto_mode_var, update_status):
 
 def _execute_move(
     best_move, fen, updated_fen, mate_flag, color_indicator,
-    board_positions, auto_mode_var, root, btn_play, update_status,
-    kingside_var, queenside_var, last_fen_by_color
+    board_positions, auto_mode_var, root, update_status,
+    last_fen_by_color
 ):
     """
     Execute either a castling move or normal move based on detection.
     """
     is_castle_move, side = is_two_square_king_move(best_move, fen, color_indicator)
     
-    if _should_execute_castling(is_castle_move, kingside_var, queenside_var):
+    if is_castle_move:
         _execute_castling_move(
             best_move, side, fen, updated_fen, mate_flag, color_indicator,
-            board_positions, auto_mode_var, root, btn_play, update_status,
-            kingside_var, queenside_var, last_fen_by_color
+            board_positions, auto_mode_var, root, update_status,
+            last_fen_by_color
         )
     else:
         logger.info("Executing normal (non-castling) move.")
         execution_mode = root.execution_mode_var.get()
         success = execute_normal_move(
             board_positions, color_indicator, best_move, mate_flag,
-            updated_fen, root, auto_mode_var, update_status, btn_play, execution_mode
+            updated_fen, root, auto_mode_var, update_status, root.gui.play_button, execution_mode
         )
         if not success:
             logger.error("Normal move execution failed.")
 
 
-def _should_execute_castling(is_castle_move, kingside_var, queenside_var):
-    """
-    Determine if we should execute castling logic.
-    """
-    return is_castle_move and (kingside_var.get() or queenside_var.get())
-
-
 def _execute_castling_move(
     best_move, side, fen, updated_fen, mate_flag, color_indicator,
-    board_positions, auto_mode_var, root, btn_play, update_status,
-    kingside_var, queenside_var, last_fen_by_color
+    board_positions, auto_mode_var, root, update_status,
+    last_fen_by_color
 ):
     """
     Execute a castling move with all necessary checks and updates.
     """
     logger.info(f"Castling move detected by pattern: {side} (move={best_move})")
     
-    # Auto-enable castling checkbox if needed
-    _auto_enable_castling_checkbox(side, kingside_var, queenside_var, root, update_status)
-    
     # Verify and execute castling
     if is_castling_possible(fen, color_indicator, side):
         _perform_castling_move(
             best_move, updated_fen, mate_flag, color_indicator,
-            board_positions, auto_mode_var, root, btn_play, update_status, last_fen_by_color
+            board_positions, auto_mode_var, root, update_status, last_fen_by_color
         )
     else:
         logger.warning("Castling not possible according to board state.")
 
 
-def _auto_enable_castling_checkbox(side, kingside_var, queenside_var, root, update_status):
-    """
-    Automatically enable the appropriate castling checkbox if not already checked.
-    """
-    if side == "kingside" and not kingside_var.get():
-        logger.info("Auto-checking 'Kingside Castle' checkbox")
-        kingside_var.set(True)
-        root.after(0, lambda: update_status("Auto-enabled Kingside Castle"))
-    elif side == "queenside" and not queenside_var.get():
-        logger.info("Auto-checking 'Queenside Castle' checkbox")
-        queenside_var.set(True)
-        root.after(0, lambda: update_status("Auto-enabled Queenside Castle"))
-
-
 def _perform_castling_move(
     best_move, updated_fen, mate_flag, color_indicator,
-    board_positions, auto_mode_var, root, btn_play, update_status, last_fen_by_color
+    board_positions, auto_mode_var, root, update_status, last_fen_by_color
 ):
     """
     Perform the actual castling move and verify it.
     """
     from executor.move_executor import drag_piece
-    drag_piece(color_indicator, best_move, board_positions, auto_mode_var, root, btn_play)
+    drag_piece(color_indicator, best_move, board_positions, auto_mode_var, root, root.gui.play_button)
     
     status_msg = f"\nBest Move: {best_move}\nCastling move executed: {best_move}"
     if mate_flag:
@@ -333,11 +303,11 @@ def _handle_processing_error(error, root, update_status, auto_mode_var):
     auto_mode_var.set(False)
 
 
-def _finalize_move_processing(root, auto_mode_var, btn_play):
+def _finalize_move_processing(root, auto_mode_var):
     """
     Clean up after move processing is complete.
     """
     processing_event.clear()
     if not auto_mode_var.get():
-        root.after(0, lambda: btn_play.config(state=tk.NORMAL))
+        root.gui.play_button.config(state=tk.NORMAL)
     logger.info("process_move completed.")
