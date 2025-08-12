@@ -87,7 +87,7 @@ class ChessPilotGUI(tk.Frame):
         self.transparency_var = tk.DoubleVar(value=1.0)
         transparency_frame = tk.Frame(controls_frame, bg=self.frame_color)
         tk.Label(transparency_frame, text="Transparency:", font=('Segoe UI', 10), bg=self.frame_color, fg=self.text_color).pack(side=tk.LEFT, padx=5)
-        self.transparency_slider = ttk.Scale(transparency_frame, from_=0.2, to=1.0, variable=self.transparency_var, command=self.master.set_transparency)
+        self.transparency_slider = ttk.Scale(transparency_frame, from_=0.2, to=1.0, variable=self.transparency_var)
         self.transparency_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
         transparency_frame.pack(fill=tk.X, pady=5)
 
