@@ -71,6 +71,7 @@ class ChessPilot:
         # Bind GUI events
         self.gui.play_button.config(command=self.process_move_thread)
         self.gui.flip_button.config(command=self.flip_board)
+        self.gui.autoplay_check.config(command=self.toggle_auto_mode)
         self.gui.transparency_slider.config(command=self.set_transparency)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)

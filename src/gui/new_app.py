@@ -67,8 +67,8 @@ class ChessPilotGUI(tk.Frame):
 
         # Auto Play Toggle
         self.autoplay_var = tk.BooleanVar(value=False)
-        autoplay_check = ttk.Checkbutton(controls_frame, text="Auto Play", variable=self.autoplay_var, command=self.master.toggle_auto_mode)
-        autoplay_check.pack(pady=5)
+        self.autoplay_check = ttk.Checkbutton(controls_frame, text="Auto Play", variable=self.autoplay_var)
+        self.autoplay_check.pack(pady=5)
 
         # Flip Button
         self.flip_button = tk.Button(controls_frame, text="Flip Side", font=('Segoe UI', 10), bg=self.accent_color, fg=self.text_color, relief=tk.FLAT)
