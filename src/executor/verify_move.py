@@ -21,7 +21,7 @@ def verify_move(color_indicator, _, expected_fen, attempts_limit=3):
             logger.warning(f"Attempt {attempt}: Screenshot capture failed")
             continue
         
-        boxes = get_positions(screenshot)
+        boxes, _, _ = get_positions(screenshot)
         if not boxes:
             logger.warning(f"Attempt {attempt}: Board detection failed")
             continue

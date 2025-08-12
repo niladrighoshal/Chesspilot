@@ -18,56 +18,18 @@ def handle_esc_key(app, event=None):
         
 def bind_shortcuts(app):
     """Bind keyboard shortcuts to various actions."""
-    # Color selection shortcuts (always allowed)
+    # Color selection shortcuts
     app.root.bind('<Key-w>', lambda e: app.set_color('w'))
     app.root.bind('<Key-b>', lambda e: app.set_color('b'))
-    # Main control shortcuts (only if color_indicator is set)
-    app.root.bind(
-        '<Key-p>',
-        lambda e: app.process_move_thread() if app.color_indicator else None
-    )
-    app.root.bind(
-        '<Key-a>',
-        lambda e: app.auto_mode_check.invoke() if app.color_indicator else None
-    )
-    app.root.bind(
-        '<Key-k>',
-        lambda e: app.kingside_var.set(not app.kingside_var.get()) if app.color_indicator else None)
-    app.root.bind(
-        '<Key-q>',
-        lambda e: app.queenside_var.set(not app.queenside_var.get()) if app.color_indicator else None)
 
-    # Screenshot delay adjustment with Up/Down arrows
-    app.root.bind(
-        '<Up>',
-        lambda e: (
-            app.screenshot_delay_var.set(
-                round(min(1.0, app.screenshot_delay_var.get() + 0.1), 1)
-            ),
-        ) if app.color_indicator is None else None
-    )
-    
-    app.root.bind(
-        '<Down>',
-        lambda e: (
-            app.screenshot_delay_var.set(
-                round(max(0.0, app.screenshot_delay_var.get() - 0.1), 1)
-            ),
-        ) if app.color_indicator is None else None
-    )
+    # Main control shortcuts
+    app.root.bind('<space>', lambda e: app.process_move_thread() if app.color_indicator else None)
+    app.root.bind('<Key-m>', lambda e: app.speech_mute_var.set(not app.speech_mute_var.get()))
 
-    # Depth adjustment with Right/Left arrows
-    app.root.bind(
-        '<Right>',
-        lambda e: (
-            app.depth_var.set(min(30, app.depth_var.get() + 1)),
-            app.update_status(f"Depth: {app.depth_var.get()}")
-        ) if app.color_indicator is None else None
-    )
-    app.root.bind(
-        '<Left>',
-        lambda e: (
-            app.depth_var.set(max(10, app.depth_var.get() - 1)),
-            app.update_status(f"Depth: {app.depth_var.get()}")
-        ) if app.color_indicator is None else None
-    )
+    # Volume control
+    app.root.bind('<Up>', lambda e: app.speech_volume_var.set(min(1.0, app.speech_volume_var.get() + 0.1)))
+    app.root.bind('<Down>', lambda e: app.speech_volume_var.set(max(0.0, app.speech_volume_var.get() - 0.1)))
+
+    # Transparency control
+    app.root.bind('<Right>', lambda e: app.transparency_var.set(min(1.0, app.transparency_var.get() + 0.1)))
+    app.root.bind('<Left>', lambda e: app.transparency_var.set(max(0.2, app.transparency_var.get() - 0.1)))

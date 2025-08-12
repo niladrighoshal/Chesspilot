@@ -4,7 +4,7 @@ from board_detection import get_positions, get_fen_from_position
 from executor.capture_screenshot_in_memory import capture_screenshot_in_memory
 from executor.get_current_fen import get_current_fen
 from executor.chess_notation_to_index import chess_notation_to_index
-from executor.move_piece import move_piece
+from executor.move_executor import drag_piece, click_piece
 from executor.did_my_piece_move import did_my_piece_move
 
 # Logger setup
@@ -20,7 +20,8 @@ def execute_normal_move(
     root,
     auto_mode_var,
     update_status,
-    btn_play
+    btn_play,
+    execution_mode
 ):
     """
     Try up to 3 times to drag your piece; only succeed if
@@ -58,8 +59,12 @@ def execute_normal_move(
             time.sleep(0.1)
             continue
 
-        logger.debug(f"Dragging from {start_idx} to {end_idx}")
-        move_piece(color_indicator, move, board_positions, auto_mode_var, root, btn_play)
+        if execution_mode == "drag":
+            logger.debug(f"Dragging from {start_idx} to {end_idx}")
+            drag_piece(color_indicator, move, board_positions, auto_mode_var, root, btn_play)
+        else:
+            logger.debug(f"Clicking from {start_idx} to {end_idx}")
+            click_piece(color_indicator, move, board_positions, auto_mode_var, root, btn_play)
         time.sleep(0.1)
 
         img = capture_screenshot_in_memory()
@@ -67,7 +72,7 @@ def execute_normal_move(
             logger.warning("Screenshot failed, retrying...")
             continue
 
-        boxes = get_positions(img)
+        boxes, _, _ = get_positions(img)
         if not boxes:
             logger.warning("Board detection failed, retrying...")
             continue

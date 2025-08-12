@@ -22,8 +22,8 @@ if not setup_resources(script_dir, project_dir):
     logger.error("Resource setup failed")
     sys.exit(1)
 
+from auto_mode import auto_move_loop
 from executor import (
-    auto_move_loop,
     capture_screenshot_in_memory,
     did_my_piece_move,
     expend_fen_row,
@@ -33,7 +33,6 @@ from executor import (
     get_current_fen,
     is_castling_possible,
     move_cursor_to_button,
-    move_piece,
     process_move,
     store_board_positions,
     update_fen_castling_rights,
@@ -41,7 +40,6 @@ from executor import (
     chess_notation_to_index,
     execute_normal_move
 )
-
 from gui.set_window_icon import set_window_icon
 from gui.create_widget import create_widgets
 from gui.shortcuts import handle_esc_key, bind_shortcuts
@@ -50,6 +48,7 @@ from gui.button_and_checkboxes import (
     action_button,
     castling_checkboxes
 )
+from utils.speech import speak, get_piece_name
 
 class ChessPilot:
     def __init__(self, root):
@@ -65,12 +64,19 @@ class ChessPilot:
         self.color_indicator = None
         self.last_fen = ""
         self.last_fen_by_color = {'w': None, 'b': None}
-        self.depth_var = tk.IntVar(value=15)
         self.auto_mode_var = tk.BooleanVar(value=False)
         self.board_positions = {}
+        self.best_move_var = tk.StringVar()
+
+        # Speech settings
+        self.speech_volume_var = tk.DoubleVar(value=0.5)
+        self.speech_mute_var = tk.BooleanVar(value=False)
 
         # Screenshot delay (0.0 to 1.0 seconds)
         self.screenshot_delay_var = tk.DoubleVar(value=0.4)
+
+        # GUI settings
+        self.transparency_var = tk.DoubleVar(value=0.5)
 
         # Board cropping parameters (unused until you set them)
         self.chessboard_x = None
@@ -108,6 +114,9 @@ class ChessPilot:
         if not initialize_stockfish_at_startup():
             logger.warning("Stockfish initialization failed at startup - will retry when needed")
         
+        # Start the best move update loop
+        threading.Thread(target=self.update_best_move_loop, daemon=True).start()
+
     def on_closing(self):
         """Handle application closing."""
         logger.info("Application closing - cleaning up Stockfish process")
@@ -150,11 +159,19 @@ class ChessPilot:
         self.btn_play.config(state=tk.NORMAL)
         self.update_status(f"\nPlaying as {'White' if color == 'w' else 'Black'}")
 
+    def flip_board(self):
+        if self.color_indicator == 'w':
+            self.set_color('b')
+        else:
+            self.set_color('w')
+
     def update_status(self, message):
         logger.debug(f"Status update: {message.strip()}")
         self.status_label.config(text=message)
-        self.depth_label.config(text=f"Depth: {self.depth_var.get()}")
         self.root.update_idletasks()
+
+    def set_transparency(self, value):
+        self.root.attributes("-alpha", value)
 
     def process_move_thread(self):
         logger.info("Play Next Move button pressed; starting process_move thread")
@@ -180,9 +197,7 @@ class ChessPilot:
         if self.auto_mode_var.get():
             logger.info("Auto mode enabled")
             self.btn_play.config(state=tk.DISABLED)
-            # First, play a single move to initialize if needed
-            self.process_move_thread()
-            # Then start continuous auto loop
+            # The auto_move_loop will handle initialization and side detection
             threading.Thread(
                 target=auto_move_loop,
                 args=(
@@ -222,10 +237,6 @@ class ChessPilot:
         logger.debug("Relocating cursor to Play button via wrapper")
         move_cursor_to_button(self.root, self.auto_mode_var, self.btn_play)
 
-    def drag_piece(self, move: str):
-        logger.debug(f"Dragging piece for move: {move}")
-        move_piece(self.color_indicator, move, self.board_positions, self.auto_mode_var, self.root, self.btn_play)
-
     def expand_fen_row(self, row: str):
         logger.debug(f"Expanding FEN row: {row}")
         return expend_fen_row(row)
@@ -251,6 +262,12 @@ class ChessPilot:
 
     def play_normal_move(self, move: str, mate_flag: bool, expected_fen: str):
         logger.debug(f"Playing normal move via wrapper: {move}")
+
+        if not self.auto_mode_var.get():
+            piece = self._get_piece_at_square(move[:2])
+            piece_name = get_piece_name(piece)
+            speak(f"Move {piece_name} from {move[:2]} to {move[2:]}", self.speech_volume_var.get(), self.speech_mute_var.get())
+
         return execute_normal_move(
             self.board_positions,
             self.color_indicator,
@@ -260,13 +277,44 @@ class ChessPilot:
             self.root,
             self.auto_mode_var,
             self.update_status,
-            self.btn_play
+            self.btn_play,
+            self.execution_mode_var.get()
         )
+
+    def _get_piece_at_square(self, square):
+        fen = self.last_fen_by_color.get(self.color_indicator)
+        if not fen:
+            return ''
+
+        file_map = {chr(ord('a') + i): i for i in range(8)}
+        rank_map = {str(i + 1): 7 - i for i in range(8)}
+
+        file = square[0]
+        rank = square[1]
+
+        col = file_map.get(file)
+        row = rank_map.get(rank)
+
+        if col is None or row is None:
+            return ''
+
+        rows = fen.split('/')
+        fen_row = rows[row]
+
+        current_col = 0
+        for char in fen_row:
+            if char.isdigit():
+                current_col += int(char)
+            else:
+                if current_col == col:
+                    return char
+                current_col += 1
+        return ''
 
     def query_best_move(self, fen: str):
         logger.debug(f"Querying best move for FEN: {fen}")
         return get_best_move(
-            self.depth_var.get(),
+            22,  # Hardcoded depth for maximum strength
             fen,
             self.root,
             self.auto_mode_var
@@ -288,6 +336,20 @@ class ChessPilot:
             expected_fen,
             attempts_limit
         )
+
+    def update_best_move_loop(self):
+        while True:
+            if self.color_indicator and not self.auto_mode_var.get():
+                fen = self.read_current_fen()
+                if fen:
+                    best_move, _, _ = self.query_best_move(fen)
+                    if best_move:
+                        self.best_move_var.set(f"Best Move: {best_move}")
+                        if not self.auto_mode_var.get():
+                            piece = self._get_piece_at_square(best_move[:2])
+                            piece_name = get_piece_name(piece)
+                            speak(f"Move {piece_name} from {best_move[:2]} to {best_move[2:]}", self.speech_volume_var.get(), self.speech_mute_var.get())
+            time.sleep(1)
 
 if __name__ == "__main__":
 

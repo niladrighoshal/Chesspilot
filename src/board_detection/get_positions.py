@@ -89,7 +89,7 @@ def predict(image):
 
 def get_positions(image_input):
     """
-    Handles image loading and executes prediction.
+    Handles image loading, executes prediction, and returns detections, midpoints, and offset.
     """
     try:
         if isinstance(image_input, str):
@@ -98,11 +98,56 @@ def get_positions(image_input):
             image = image_input
     except Exception as e:
         print(f"Error loading image: {e}")
-        return []
+        return None, None, None
 
     predictions = predict(image)
-    return predictions if predictions else None
+    if not predictions:
+        return None, None, None
+
+    midpoints, drag_offset = calculate_midpoints_and_offset(predictions)
+
+    return predictions, midpoints, drag_offset
+
+def calculate_midpoints_and_offset(detections):
+    """
+    Calculates the midpoints of each square and a drag offset.
+    """
+    if not detections:
+        return {}, 0
+
+    # Assuming the detections include piece bounding boxes, we can estimate square size
+    # A simple approach is to find the min/max coordinates to define the board area
+    all_x = [d[0] for d in detections]
+    all_y = [d[1] for d in detections]
+
+    min_x, max_x = min(all_x), max(all_x)
+    min_y, max_y = min(all_y), max(all_y)
+
+    board_width = max_x - min_x
+    board_height = max_y - min_y
+
+    square_w = board_width / 8
+    square_h = board_height / 8
+
+    drag_offset = min(square_h // 4, square_w // 4)
+
+    midpoints = {}
+    for i in range(8):
+        for j in range(8):
+            mid_x = min_x + (j * square_w) + (square_w / 2)
+            mid_y = min_y + (i * square_h) + (square_h / 2)
+
+            # Convert to standard chess notation (a1, h8)
+            file = chr(ord('a') + j)
+            rank = str(8 - i)
+            square_name = f"{file}{rank}"
+            midpoints[square_name] = (mid_x, mid_y)
+
+    return midpoints, drag_offset
 
 if __name__ == "__main__":
     image_path = "screenshot.png"
-    print(get_positions(image_path))
+    preds, mids, offset = get_positions(image_path)
+    print("Predictions:", preds)
+    print("Midpoints:", mids)
+    print("Drag Offset:", offset)
