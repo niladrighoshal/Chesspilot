@@ -81,6 +81,51 @@ def drag_piece(color_indicator, move, board_positions, auto_mode_var, root, btn_
         logger.debug("Auto mode off after move; restoring cursor to Play button")
         root.after(0, lambda: move_cursor_to_button(root, auto_mode_var, btn_play))
 
+def get_piece_at_square(fen, square):
+    file_map = {chr(ord('a') + i): i for i in range(8)}
+    rank_map = {str(i + 1): 7 - i for i in range(8)}
+
+    file = square[0]
+    rank = square[1]
+
+    col = file_map.get(file)
+    row = rank_map.get(rank)
+
+    if col is None or row is None:
+        return None
+
+    rows = fen.split(' ')[0].split('/')
+    fen_row = rows[row]
+
+    current_col = 0
+    for char in fen_row:
+        if char.isdigit():
+            current_col += int(char)
+        else:
+            if current_col == col:
+                return char
+            current_col += 1
+    return None
+
+def is_promotion(fen, move):
+    start_square = move[:2]
+    end_square = move[2:]
+    piece = get_piece_at_square(fen, start_square)
+
+    if piece is None:
+        return False
+
+    if piece.lower() != 'p':
+        return False
+
+    if piece.islower() and end_square[1] == '1': # Black pawn
+        return True
+
+    if piece.isupper() and end_square[1] == '8': # White pawn
+        return True
+
+    return False
+
 def click_piece(color_indicator, move, board_positions, auto_mode_var, root, btn_play, click_offset=10, delay=0.5):
     logger.info(f"Attempting click move: {move}")
     start_pos, end_pos = _get_piece_start_and_end_pos(color_indicator, move, board_positions, root, auto_mode_var)

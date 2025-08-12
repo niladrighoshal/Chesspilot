@@ -50,17 +50,7 @@ def process_move_thread(
 
 
 def auto_move_loop(
-    root,
-    color_indicator,
-    auto_mode_var,
-    btn_play,
-    board_positions,
-    last_fen_by_color,
-    screenshot_delay_var,
-    update_status_callback,
-    kingside_var,
-    queenside_var,
-    update_last_fen_for_color
+    app
 ):
     """
     Main auto move loop - coordinates the overall flow.
@@ -71,55 +61,24 @@ def auto_move_loop(
     frames = deque(maxlen=10)
     screenshot_interval = 0.3  # 300 ms
 
-    # Auto-detect side
-    if color_indicator is None:
-        color_indicator = _auto_detect_side(root, auto_mode_var, frames)
-        if color_indicator is None:
-            logger.error("Could not auto-detect side. Exiting auto mode.")
-            update_status_callback("Error: Could not detect board side.")
-            auto_mode_var.set(False)
-            return
-        else:
-            logger.info(f"Auto-detected side: {'White' if color_indicator == 'w' else 'Black'}")
-            update_status_callback(f"Playing as {'White' if color_indicator == 'w' else 'Black'}")
-
+    color_indicator = app.color_indicator
     opp_color = 'b' if color_indicator == 'w' else 'w'
     logger.info(f"Player color: {color_indicator}, Opponent color: {opp_color}")
 
     # Main processing loop
     _run_real_time_move_detection(
-        root, color_indicator, opp_color, auto_mode_var, btn_play,
-        board_positions, last_fen_by_color, screenshot_interval,
-        update_status_callback, kingside_var, queenside_var, update_last_fen_for_color,
+        app.root, color_indicator, opp_color, app.auto_mode_var, app.gui.play_button,
+        app.board_positions, app.last_fen_by_color, screenshot_interval,
+        app.update_status, app.update_last_fen_for_color,
         frames
     )
 
     logger.info("Exiting auto_move_loop")
 
-def _auto_detect_side(root, auto_mode_var, frames):
-    """
-    Captures frames until a valid FEN is extracted to determine the player's side.
-    """
-    logger.info("Attempting to auto-detect side...")
-    while True:
-        screenshot = capture_screenshot_in_memory(root, auto_mode_var)
-        if screenshot:
-            frames.append(screenshot)
-            boxes, _, _ = get_positions(screenshot)
-            if boxes:
-                _, _, _, fen = get_fen_from_position('w', boxes) # Assume white to get a valid FEN
-                if fen:
-                    # Detect side from piece placement, then get active color
-                    side = detect_side_from_fen(fen)
-                    _, _, _, fen_with_correct_side = get_fen_from_position(side, boxes)
-                    active_color = fen_with_correct_side.split()[1]
-                    return active_color
-        time.sleep(0.3) # Wait before retrying
-
 def _run_real_time_move_detection(
     root, color_indicator, opp_color, auto_mode_var, btn_play,
     board_positions, last_fen_by_color, screenshot_interval,
-    update_status_callback, kingside_var, queenside_var, update_last_fen_for_color,
+    update_status_callback, update_last_fen_for_color,
     frames
 ):
     """
@@ -162,10 +121,10 @@ def _run_real_time_move_detection(
                             delay = _get_realistic_delay(last_opponent_move_time)
                             logger.info(f"Waiting for {delay:.2f} seconds before making a move.")
                             time.sleep(delay)
-                            process_move_thread(
-                                root, color_indicator, auto_mode_var, btn_play, board_positions,
-                                update_status_callback, kingside_var, queenside_var,
-                                update_last_fen_for_color, last_fen_by_color, screenshot_interval
+                            process_move(
+                                root, color_indicator, auto_mode_var, board_positions,
+                                update_status_callback,
+                                update_last_fen_for_color, last_fen_by_color
                             )
 
         # Ensure the loop runs at the desired interval
