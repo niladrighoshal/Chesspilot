@@ -1,0 +1,7 @@
+mss
+pyautogui
+Pillow
+onnxruntime
+numpy
+pywin32
+colorama
