@@ -8,6 +8,7 @@ from board_detection import get_positions, get_fen_from_position
 from executor.capture_screenshot_in_memory import capture_screenshot_in_memory
 from executor.process_move import process_move
 from executor.processing_sync import processing_event
+from executor.get_best_move import get_best_move
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def auto_move_loop(app):
             time.sleep(screenshot_interval)
             continue
 
-        screenshot = capture_screenshot_in_memory()
+        screenshot = capture_screenshot_in_memory(app.gui)
         if screenshot:
             frames.append(screenshot)
 
@@ -37,7 +38,7 @@ def auto_move_loop(app):
             continue
 
         latest_frame = frames[-1]
-        boxes, midpoints, drag_offset = get_positions(latest_frame)
+        boxes, midpoints, _ = get_positions(latest_frame)
 
         if not boxes:
             time.sleep(screenshot_interval)
@@ -58,11 +59,14 @@ def auto_move_loop(app):
 
         elif active_color == color_indicator:
             if _handle_player_turn(opp_color, placement, app.last_fen_by_color):
-                delay = _get_realistic_delay(last_opponent_move_time)
+                delay = _get_realistic_delay(app, last_opponent_move_time)
                 logger.info(f"Waiting for {delay:.2f} seconds before making a move.")
                 time.sleep(delay)
-                # Directly call process_move in a new thread
-                threading.Thread(target=process_move, args=(app,), daemon=True).start()
+
+                move_data = get_best_move(22, current_fen)
+                if move_data and move_data[0]:
+                    best_move = move_data[0]
+                    threading.Thread(target=process_move, args=(app, best_move), daemon=True).start()
 
         elapsed_time = time.time() - start_time
         sleep_time = max(0, screenshot_interval - elapsed_time)
@@ -70,7 +74,10 @@ def auto_move_loop(app):
 
     logger.info("Auto move loop finished.")
 
-def _get_realistic_delay(last_opponent_move_time):
+def _get_realistic_delay(app, last_opponent_move_time):
+    if app.move_count < random.randint(4, 8):
+        return random.uniform(1, 3)
+
     opponent_time = time.time() - last_opponent_move_time
     delay = opponent_time * random.uniform(0.5, 0.8) + random.uniform(0.2, 0.5)
     return max(0.5, min(delay, 5.0))
@@ -78,7 +85,6 @@ def _get_realistic_delay(last_opponent_move_time):
 def _handle_opponent_turn(opp_color, placement, last_fen_by_color):
     old = last_fen_by_color.get(opp_color)
     if old is None or placement != old:
-        logger.info("Opponent moved; updating last_fen_by_color[opp_color].")
         last_fen_by_color[opp_color] = placement
         return True
     return False
@@ -88,7 +94,6 @@ def _handle_player_turn(opp_color, placement, last_fen_by_color):
         return False
 
     if placement != last_fen_by_color[opp_color]:
-        logger.info("Detected genuine opponent move; launching our move.")
         last_fen_by_color[opp_color] = placement
         return True
     return False

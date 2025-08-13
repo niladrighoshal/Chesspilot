@@ -7,12 +7,9 @@ from tkinter import messagebox
 import logging
 from utils.get_binary_path import get_binary_path
 
-# Logger setup
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
-
-def capture_screenshot_in_memory(root=None, auto_mode_var=None):
+def capture_screenshot_in_memory(app=None):
     grim_path = get_binary_path("grim") if is_wayland() else None
     try:
         if is_wayland():
@@ -29,8 +26,10 @@ def capture_screenshot_in_memory(root=None, auto_mode_var=None):
         return image
     except Exception as e:
         logger.error(f"Screenshot failed: {e}")
-        if root:
-            root.after(0, lambda err=e: messagebox.showerror("Error", f"Screenshot failed: {str(err)}"))
-        if auto_mode_var:
-            auto_mode_var.set(False)
+        if app and hasattr(app, 'gui'):
+            app.gui.master.after(0, lambda err=e: messagebox.showerror("Error", f"Screenshot failed: {str(err)}"))
+        if app and hasattr(app, 'auto_mode'):
+            app.auto_mode = False
+            if hasattr(app, 'gui'):
+                app.gui.autoplay_var.set(False)
         return None
