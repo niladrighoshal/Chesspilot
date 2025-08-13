@@ -68,10 +68,10 @@ class ModernTkinterApp(tk.Frame):
         controls_frame.pack(fill=tk.X, pady=10)
 
         # Toggles
+        self.create_radio_row(controls_frame, "Side (W/B):", self.side_var, [("White", "w"), ("Black", "b")])
+        self.create_radio_row(controls_frame, "Mode (Ctrl):", self.drag_click_var, [("Drag", "drag"), ("Click", "click")])
         self.create_check_row(controls_frame, "Auto Play (A)", self.autoplay_var)
         self.create_check_row(controls_frame, "Mute (M)", self.mute_var)
-        self.create_check_row(controls_frame, "Side (W/B)", self.side_var, onvalue='b', offvalue='w')
-        self.create_check_row(controls_frame, "Drag/Click (Ctrl)", self.drag_click_var, onvalue='click', offvalue='drag')
 
         # Sliders
         self.create_slider_row(controls_frame, "Volume (Up/Down)", self.volume_var, 0, 100)
@@ -89,6 +89,19 @@ class ModernTkinterApp(tk.Frame):
         check = ttk.Checkbutton(row, variable=variable, onvalue=onvalue, offvalue=offvalue)
         check.pack(side=tk.RIGHT)
         return check
+
+    def create_radio_row(self, parent, label_text, variable, options):
+        row = tk.Frame(parent, bg=self.frame_color)
+        row.pack(fill=tk.X, padx=10, pady=2)
+        label = tk.Label(row, text=label_text, font=('Segoe UI', 10), bg=self.frame_color, fg=self.text_color)
+        label.pack(side=tk.LEFT)
+
+        radio_frame = tk.Frame(row, bg=self.frame_color)
+        radio_frame.pack(side=tk.RIGHT)
+        for text, value in options:
+            radio = ttk.Radiobutton(radio_frame, text=text, variable=variable, value=value)
+            radio.pack(side=tk.LEFT, padx=5)
+        return radio_frame
 
     def create_slider_row(self, parent, label_text, variable, from_, to):
         row = tk.Frame(parent, bg=self.frame_color)

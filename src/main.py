@@ -4,6 +4,9 @@ import time
 import logging
 import os
 import tkinter as tk
+from queue import Queue, Empty
+import random
+
 from gui.modern_tkinter_app import ModernTkinterApp
 from utils.logging_setup import setup_console_logging
 from utils.chess_resources_manager import setup_resources
@@ -30,76 +33,123 @@ class ChessPilot:
         self.board_positions = {}
         self.last_fen_by_color = {'w': None, 'b': None}
         
-        self.color_indicator = 'w'
+        self.color_indicator = None
         self.auto_mode = False
         self.drag_mode = True
+        self.move_count = 0
+        self.best_move_cache = None
 
+        self.queue = Queue()
         self.setup_connections()
 
         if not initialize_stockfish_at_startup():
             self.update_status("Stockfish initialization failed.")
 
-        threading.Thread(target=self.auto_detection_thread, daemon=True).start()
-        threading.Thread(target=self.best_move_thread, daemon=True).start()
+        self.root.after(100, self.process_queue)
 
     def setup_connections(self):
         self.gui.capture_button.config(command=self.toggle_capture)
-        self.gui.play_button.config(command=self.process_move_thread)
-        # The toggles are connected via variables, but commands can be added if needed
-        self.gui.volume_var.trace_add("write", self.update_volume)
-        self.gui.transparency_var.trace_add("write", self.set_transparency)
+        self.gui.play_button.config(command=self.play_best_move)
+        self.gui.autoplay_var.trace_add("write", self.toggle_auto_mode)
         self.gui.side_var.trace_add("write", self.flip_board)
         self.gui.drag_click_var.trace_add("write", self.toggle_drag_click)
-        self.gui.autoplay_var.trace_add("write", self.toggle_auto_mode)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def process_queue(self):
+        try:
+            message = self.queue.get_nowait()
+            msg_type = message.get("type")
+            payload = message.get("payload")
+
+            if msg_type == "status_update":
+                self.update_status(payload)
+            elif msg_type == "side_detected":
+                self.color_indicator = payload
+                self.gui.side_var.set(payload)
+                self.update_status(f"Side detected: {'White' if payload == 'w' else 'Black'}. Ready.")
+                self.start_best_move_thread()
+            elif msg_type == "best_move_update":
+                self.best_move_cache = payload
+                self.gui.best_move_var.set(f"Best Move: {payload}")
+                if not self.gui.mute_var.get() and not self.auto_mode:
+                    self.speak_move(payload)
+
+        except Empty:
+            pass
+        finally:
+            if not self.is_closing:
+                self.root.after(100, self.process_queue)
 
     def update_status(self, text):
         self.gui.status_var.set(text)
 
-    def update_best_move(self, text):
-        self.gui.best_move_var.set(text)
-
     def toggle_capture(self):
         self.is_capturing = not self.is_capturing
-        state = "ON" if self.is_capturing else "OFF"
-        self.update_status(f"Screen Capture: {state}")
         self.gui.capture_button.config(text="■" if self.is_capturing else "▶", fg="red" if self.is_capturing else "#00FF00")
+        if self.is_capturing:
+            self.update_status("Capture ON. Detecting board...")
+            if self.color_indicator is None:
+                threading.Thread(target=self.auto_detection_thread, daemon=True).start()
+            else:
+                self.start_best_move_thread()
+        else:
+            self.update_status("Capture OFF.")
+            self.best_move_cache = None
+            self.gui.best_move_var.set("Best Move: ...")
 
     def auto_detection_thread(self):
-        while not self.is_closing:
-            if self.is_capturing and self.color_indicator is None:
-                self.update_status("Detecting side...")
-                fen = get_current_fen('w')
-                if fen:
-                    side = detect_side_from_fen(fen)
-                    self.color_indicator = side
-                    self.gui.side_var.set(side)
-                    self.update_status(f"Detected side: {'White' if side == 'w' else 'Black'}")
-            time.sleep(1)
+        fen = None
+        for _ in range(10):
+            if not self.is_capturing: return
+            screenshot = capture_screenshot_in_memory()
+            if screenshot:
+                boxes, _, _ = get_positions(screenshot)
+                if boxes:
+                    _, _, _, fen = get_fen_from_position('w', boxes)
+                    if fen: break
+            time.sleep(0.5)
+
+        if fen:
+            side = detect_side_from_fen(fen)
+            self.queue.put({"type": "side_detected", "payload": side})
+        else:
+            self.queue.put({"type": "status_update", "payload": "Board not found. Pausing capture."})
+            self.is_capturing = False
+            self.gui.capture_button.config(text="▶", fg="#00FF00")
+
+    def start_best_move_thread(self):
+        # Ensure only one best move thread is running
+        if not hasattr(self, "best_move_thread_instance") or not self.best_move_thread_instance.is_alive():
+            self.best_move_thread_instance = threading.Thread(target=self.best_move_thread, daemon=True)
+            self.best_move_thread_instance.start()
 
     def best_move_thread(self):
-        while not self.is_closing:
-            if self.is_capturing and self.color_indicator and not self.auto_mode:
+        while not self.is_closing and self.is_capturing:
+            if self.color_indicator and not self.auto_mode:
                 fen = get_current_fen(self.color_indicator)
                 if fen:
                     move, _, _ = get_best_move(22, fen)
-                    if move:
-                        self.update_best_move(f"Best Move: {move}")
-                        if not self.gui.mute_var.get():
-                            piece = get_piece_name(get_piece_at_square(fen, move[:2]))
-                            speak(f"Move {piece} from {move[:2]} to {move[2:]}", self.gui.volume_var.get()/100)
-            time.sleep(2)
+                    if move and move != self.best_move_cache:
+                        self.queue.put({"type": "best_move_update", "payload": move})
+            time.sleep(2) # Check every 2 seconds
 
-    def process_move_thread(self):
+    def play_best_move(self):
+        if self.best_move_cache:
+            self.process_move_thread(self.best_move_cache)
+        else:
+            self.update_status("No best move available to play.")
+
+    def process_move_thread(self, move):
         if self.is_capturing:
-            threading.Thread(target=process_move, args=(self,), daemon=True).start()
+            threading.Thread(target=process_move, args=(self, move), daemon=True).start()
         else:
             self.update_status("Enable screen capture first.")
 
     def toggle_auto_mode(self, *args):
         self.auto_mode = self.gui.autoplay_var.get()
         self.gui.play_button.config(state=tk.DISABLED if self.auto_mode else tk.NORMAL)
-        if self.auto_mode:
+        self.update_status(f"Auto-Play {'ON' if self.auto_mode else 'OFF'}")
+        if self.auto_mode and self.is_capturing:
             threading.Thread(target=auto_move_loop, args=(self,), daemon=True).start()
 
     def flip_board(self, *args):
@@ -109,12 +159,11 @@ class ChessPilot:
     def toggle_drag_click(self, *args):
         self.drag_mode = self.gui.drag_click_var.get() == "drag"
 
-    def update_volume(self, *args):
-        # The variable is already linked to the slider
-        pass
-
-    def set_transparency(self, *args):
-        self.root.attributes("-alpha", self.gui.transparency_var.get() / 100)
+    def speak_move(self, move):
+        fen = get_current_fen(self.color_indicator)
+        if fen:
+            piece = get_piece_at_square(fen, move[:2])
+            speak(f"Move {get_piece_name(piece)} from {move[:2]} to {move[2:]}", self.gui.volume_var.get()/100)
 
     def on_closing(self):
         self.is_closing = True
@@ -122,7 +171,6 @@ class ChessPilot:
         self.root.destroy()
 
 def get_piece_at_square(fen, square):
-    # This is a helper function that should probably be in a different file
     file_map = {chr(ord('a') + i): i for i in range(8)}
     rank_map = {str(i + 1): 7 - i for i in range(8)}
     file, rank = square[0], square[1]
