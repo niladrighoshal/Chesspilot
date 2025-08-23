@@ -33,7 +33,7 @@ def execute_normal_move(app, move, expected_fen, mate_flag):
             start_pos = app.board_positions[start_square]
             end_pos = app.board_positions[end_square]
         except KeyError:
-            logger.warning(f"Start or end position not found in board_positions: {start_square}, {end_square}")
+            logger.warning(f"Start or end position not found in board_positions for move {move}. Available keys: {list(app.board_positions.keys())}")
             time.sleep(0.1)
             continue
 
@@ -42,7 +42,7 @@ def execute_normal_move(app, move, expected_fen, mate_flag):
             drag_piece(app.color_indicator, move, app.board_positions, app.auto_mode, app.gui, app.gui.play_button)
         else:
             click_piece(app.color_indicator, move, app.board_positions, app.auto_mode, app.gui, app.gui.play_button)
-        time.sleep(0.5) # Wait for move to register on screen
+        time.sleep(0.5)
 
         img = capture_screenshot_in_memory()
         if not img:

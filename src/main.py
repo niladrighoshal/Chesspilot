@@ -27,26 +27,43 @@ class ChessPilot:
     def __init__(self, root):
         self.root = root
 
+        # State Variables
         self.is_closing = False
         self.is_capturing = False
         self.board_positions = {}
         self.last_fen_by_color = {'w': None, 'b': None}
-        
         self.color_indicator = None
         self.auto_mode = False
         self.drag_mode = True
         self.mute = False
-        self.volume = 0.5
+        self.volume = 0.1
         self.move_count = 0
         self.best_move_cache = None
 
-        self.queue = Queue()
+        # GUI Variables
+        self.status_var = tk.StringVar(value="Initializing...")
+        self.best_move_var = tk.StringVar(value="Best Move: ...")
+        self.side_state_var = tk.StringVar(value="White")
+        self.drag_click_state_var = tk.StringVar(value="Drag")
+        self.autoplay_state_var = tk.StringVar(value="OFF")
+        self.mute_state_var = tk.StringVar(value="ON")
+
         self.gui = ModernTkinterApp(master=root, app_logic=self)
+        self.queue = Queue()
 
         if not initialize_stockfish_at_startup():
             self.update_status("Stockfish initialization failed.")
 
         self.root.after(100, self.process_queue)
+        self.setup_key_bindings()
+
+    def setup_key_bindings(self):
+        self.root.bind('<space>', lambda e: self.play_best_move())
+        self.root.bind('<Key-m>', lambda e: self.mute_toggle.invoke())
+        self.root.bind('<Key-a>', lambda e: self.autoplay_toggle.invoke())
+        self.root.bind('<Control_L>', lambda e: self.drag_click_toggle.invoke())
+        self.root.bind('<Control_R>', lambda e: self.drag_click_toggle.invoke())
+        # Add other key bindings here
 
     def process_queue(self):
         try:
@@ -73,7 +90,7 @@ class ChessPilot:
                 self.root.after(100, self.process_queue)
 
     def update_status(self, text):
-        self.gui.status_var.set(text)
+        self.status_var.set(text)
 
     def toggle_capture(self):
         self.is_capturing = not self.is_capturing
@@ -141,19 +158,22 @@ class ChessPilot:
     def toggle_auto_mode(self, state):
         self.auto_mode = state
         self.gui.play_button.config(state=tk.DISABLED if self.auto_mode else tk.NORMAL)
-        self.update_status(f"Auto-Play {'ON' if self.auto_mode else 'OFF'}")
+        self.autoplay_state_var.set("ON" if self.auto_mode else "OFF")
         if self.auto_mode and self.is_capturing:
             threading.Thread(target=auto_move_loop, args=(self,), daemon=True).start()
 
     def flip_board(self, state):
         self.color_indicator = 'b' if state else 'w'
-        self.update_status(f"Side set to {'Black' if self.color_indicator == 'b' else 'White'}")
+        self.side_state_var.set("Black" if self.color_indicator == 'b' else 'White')
+        self.update_status(f"Side set to {self.side_state_var.get()}")
 
     def toggle_drag_click(self, state):
         self.drag_mode = not state
+        self.drag_click_state_var.set("Click" if self.drag_mode else "Drag")
 
     def toggle_mute(self, state):
         self.mute = state
+        self.mute_state_var.set("OFF" if self.mute else "ON")
 
     def set_volume(self, value):
         self.volume = float(value) / 100
