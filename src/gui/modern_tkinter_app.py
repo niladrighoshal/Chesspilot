@@ -52,25 +52,29 @@ class ModernTkinterApp(tk.Frame):
         controls_frame.pack(fill=tk.X, pady=10)
 
         # Toggles
-        self.side_toggle = self.create_toggle_row(controls_frame, "Side (W/B):", self.app.flip_board)
-        self.drag_click_toggle = self.create_toggle_row(controls_frame, "Mode (Ctrl):", self.app.toggle_drag_click)
-        self.autoplay_toggle = self.create_toggle_row(controls_frame, "Auto Play (A)", self.app.toggle_auto_mode)
-        self.mute_toggle = self.create_toggle_row(controls_frame, "Mute (M)", self.app.toggle_mute)
+        self.side_toggle = self.create_toggle_row(controls_frame, "Side:", self.app.flip_board, self.app.side_state_var)
+        self.drag_click_toggle = self.create_toggle_row(controls_frame, "Mode:", self.app.toggle_drag_click, self.app.drag_click_state_var)
+        self.autoplay_toggle = self.create_toggle_row(controls_frame, "Auto-Play:", self.app.toggle_auto_mode, self.app.autoplay_state_var)
+        self.mute_toggle = self.create_toggle_row(controls_frame, "Sound:", self.app.toggle_mute, self.app.mute_state_var)
 
         # Sliders
-        self.volume_slider = self.create_slider_row(controls_frame, "Volume (Up/Down)", self.app.set_volume, 0, 100)
-        self.transparency_slider = self.create_slider_row(controls_frame, "Transparency (L/R)", self.app.set_transparency, 20, 100)
+        self.volume_slider = self.create_slider_row(controls_frame, "Volume:", self.app.set_volume, 0, 100)
+        self.transparency_slider = self.create_slider_row(controls_frame, "Transparency:", self.app.set_transparency, 20, 100)
         self.volume_slider.set(10)
         self.transparency_slider.set(75)
 
         footer = tk.Label(main_frame, text="Made by Niladri | Powered by NiluAI", font=('Segoe UI', 8), bg=self.bg_color, fg="#AAAAAA")
         footer.pack(side=tk.BOTTOM, pady=(10, 0))
 
-    def create_toggle_row(self, parent, label_text, command):
+    def create_toggle_row(self, parent, label_text, command, state_var):
         row = tk.Frame(parent, bg=self.frame_color)
         row.pack(fill=tk.X, padx=10, pady=5)
         label = tk.Label(row, text=label_text, font=('Segoe UI', 10), bg=self.frame_color, fg=self.text_color)
         label.pack(side=tk.LEFT)
+
+        state_label = tk.Label(row, textvariable=state_var, font=('Segoe UI', 10, 'bold'), bg=self.frame_color, fg=self.text_color)
+        state_label.pack(side=tk.LEFT, padx=10)
+
         toggle = create_toggle(row, width=50, height=25, mode="dark", command=command)
         toggle.pack(side=tk.RIGHT)
         return toggle

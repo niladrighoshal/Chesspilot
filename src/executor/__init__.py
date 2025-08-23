@@ -1,6 +1,5 @@
 from .capture_screenshot_in_memory import capture_screenshot_in_memory
 from .chess_notation_to_index import chess_notation_to_index
-from .move_cursor_to_button import move_cursor_to_button
 from .expend_fen_row import expend_fen_row
 from .is_castling_possible import is_castling_possible
 from .update_fen_castling_rights import update_fen_castling_rights
@@ -16,7 +15,6 @@ from .is_two_square_king_move import is_two_square_king_move
 __all__ = [
     "capture_screenshot_in_memory",
     "chess_notation_to_index",
-    "move_cursor_to_button",
     "expend_fen_row",
     "is_castling_possible",
     "update_fen_castling_rights",
