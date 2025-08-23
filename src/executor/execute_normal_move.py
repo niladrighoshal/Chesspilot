@@ -1,5 +1,6 @@
 import time
 import logging
+import tkinter as tk
 from board_detection import get_positions, get_fen_from_position
 from executor.capture_screenshot_in_memory import capture_screenshot_in_memory
 from executor.get_current_fen import get_current_fen
@@ -22,17 +23,17 @@ def execute_normal_move(app, move, expected_fen, mate_flag):
             time.sleep(0.1)
             continue
 
-        start_idx, end_idx = chess_notation_to_index(app.color_indicator, app.gui, app.auto_mode, move)
-        if start_idx is None or end_idx is None:
+        start_square, end_square = chess_notation_to_index(move)
+        if start_square is None or end_square is None:
             logger.warning("Invalid move indices, retrying...")
             time.sleep(0.1)
             continue
 
         try:
-            start_pos = app.board_positions[start_idx]
-            end_pos = app.board_positions[end_idx]
+            start_pos = app.board_positions[start_square]
+            end_pos = app.board_positions[end_square]
         except KeyError:
-            logger.warning(f"Start or end position not found in board_positions: {start_idx}, {end_idx}")
+            logger.warning(f"Start or end position not found in board_positions: {start_square}, {end_square}")
             time.sleep(0.1)
             continue
 
@@ -41,7 +42,7 @@ def execute_normal_move(app, move, expected_fen, mate_flag):
             drag_piece(app.color_indicator, move, app.board_positions, app.auto_mode, app.gui, app.gui.play_button)
         else:
             click_piece(app.color_indicator, move, app.board_positions, app.auto_mode, app.gui, app.gui.play_button)
-        time.sleep(0.1)
+        time.sleep(0.5) # Wait for move to register on screen
 
         img = capture_screenshot_in_memory()
         if not img:
@@ -60,19 +61,19 @@ def execute_normal_move(app, move, expected_fen, mate_flag):
             continue
 
         if did_my_piece_move(app.color_indicator, original_fen, current_fen, move):
-            status = f"Best Move: {move}\nMove Played: {move}"
+            status = f"Move Played: {move}"
             logger.info(f"Move executed successfully: {move}")
 
             if mate_flag:
                 status += "\nCheckmate!"
                 app.auto_mode = False
-                app.gui.autoplay_toggle.setChecked(False)
+                app.gui.autoplay_var.set(False)
 
             app.update_status(status)
             return True
 
     logger.error(f"Move {move} failed after {max_retries} attempts")
-    app.update_status(f"Move failed to register after {max_retries} attempts")
+    app.update_status(f"Move failed to register: {move}")
     app.auto_mode = False
-    app.gui.autoplay_toggle.setChecked(False)
+    app.gui.autoplay_var.set(False)
     return False

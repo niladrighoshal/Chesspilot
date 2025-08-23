@@ -26,7 +26,6 @@ from utils.speech import speak, get_piece_name
 class ChessPilot:
     def __init__(self, root):
         self.root = root
-        self.gui = ModernTkinterApp(master=root)
 
         self.is_closing = False
         self.is_capturing = False
@@ -36,24 +35,18 @@ class ChessPilot:
         self.color_indicator = None
         self.auto_mode = False
         self.drag_mode = True
+        self.mute = False
+        self.volume = 0.5
         self.move_count = 0
         self.best_move_cache = None
 
         self.queue = Queue()
-        self.setup_connections()
+        self.gui = ModernTkinterApp(master=root, app_logic=self)
 
         if not initialize_stockfish_at_startup():
             self.update_status("Stockfish initialization failed.")
 
         self.root.after(100, self.process_queue)
-
-    def setup_connections(self):
-        self.gui.capture_button.config(command=self.toggle_capture)
-        self.gui.play_button.config(command=self.play_best_move)
-        self.gui.autoplay_var.trace_add("write", self.toggle_auto_mode)
-        self.gui.side_var.trace_add("write", self.flip_board)
-        self.gui.drag_click_var.trace_add("write", self.toggle_drag_click)
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def process_queue(self):
         try:
@@ -65,14 +58,13 @@ class ChessPilot:
                 self.update_status(payload)
             elif msg_type == "side_detected":
                 self.color_indicator = payload
-                self.gui.side_var.set(payload)
+                self.gui.side_toggle.on = (payload == 'b')
+                self.gui.side_toggle._redraw()
                 self.update_status(f"Side detected: {'White' if payload == 'w' else 'Black'}. Ready.")
                 self.start_best_move_thread()
             elif msg_type == "best_move_update":
                 self.best_move_cache = payload
                 self.gui.best_move_var.set(f"Best Move: {payload}")
-                if not self.gui.mute_var.get() and not self.auto_mode:
-                    self.speak_move(payload)
 
         except Empty:
             pass
@@ -118,7 +110,6 @@ class ChessPilot:
             self.gui.capture_button.config(text="▶", fg="#00FF00")
 
     def start_best_move_thread(self):
-        # Ensure only one best move thread is running
         if not hasattr(self, "best_move_thread_instance") or not self.best_move_thread_instance.is_alive():
             self.best_move_thread_instance = threading.Thread(target=self.best_move_thread, daemon=True)
             self.best_move_thread_instance.start()
@@ -131,10 +122,12 @@ class ChessPilot:
                     move, _, _ = get_best_move(22, fen)
                     if move and move != self.best_move_cache:
                         self.queue.put({"type": "best_move_update", "payload": move})
-            time.sleep(2) # Check every 2 seconds
+            time.sleep(2)
 
     def play_best_move(self):
         if self.best_move_cache:
+            if not self.mute:
+                self.speak_move(self.best_move_cache)
             self.process_move_thread(self.best_move_cache)
         else:
             self.update_status("No best move available to play.")
@@ -145,25 +138,34 @@ class ChessPilot:
         else:
             self.update_status("Enable screen capture first.")
 
-    def toggle_auto_mode(self, *args):
-        self.auto_mode = self.gui.autoplay_var.get()
+    def toggle_auto_mode(self, state):
+        self.auto_mode = state
         self.gui.play_button.config(state=tk.DISABLED if self.auto_mode else tk.NORMAL)
         self.update_status(f"Auto-Play {'ON' if self.auto_mode else 'OFF'}")
         if self.auto_mode and self.is_capturing:
             threading.Thread(target=auto_move_loop, args=(self,), daemon=True).start()
 
-    def flip_board(self, *args):
-        self.color_indicator = self.gui.side_var.get()
-        self.update_status(f"Side set to {'White' if self.color_indicator == 'w' else 'Black'}")
+    def flip_board(self, state):
+        self.color_indicator = 'b' if state else 'w'
+        self.update_status(f"Side set to {'Black' if self.color_indicator == 'b' else 'White'}")
 
-    def toggle_drag_click(self, *args):
-        self.drag_mode = self.gui.drag_click_var.get() == "drag"
+    def toggle_drag_click(self, state):
+        self.drag_mode = not state
+
+    def toggle_mute(self, state):
+        self.mute = state
+
+    def set_volume(self, value):
+        self.volume = float(value) / 100
+
+    def set_transparency(self, value):
+        self.root.attributes("-alpha", float(value) / 100)
 
     def speak_move(self, move):
         fen = get_current_fen(self.color_indicator)
         if fen:
             piece = get_piece_at_square(fen, move[:2])
-            speak(f"Move {get_piece_name(piece)} from {move[:2]} to {move[2:]}", self.gui.volume_var.get()/100)
+            speak(f"Move {get_piece_name(piece)} from {move[:2]} to {move[2:]}", self.volume)
 
     def on_closing(self):
         self.is_closing = True
