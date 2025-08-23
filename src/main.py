@@ -29,7 +29,7 @@ class ChessPilot:
 
         # State Variables
         self.is_closing = False
-        self.is_capturing = False
+        self.is_capturing = True # Start with capture on
         self.board_positions = {}
         self.last_fen_by_color = {'w': None, 'b': None}
         self.color_indicator = None
@@ -43,10 +43,6 @@ class ChessPilot:
         # GUI Variables
         self.status_var = tk.StringVar(value="Initializing...")
         self.best_move_var = tk.StringVar(value="Best Move: ...")
-        self.side_state_var = tk.StringVar(value="White")
-        self.drag_click_state_var = tk.StringVar(value="Drag")
-        self.autoplay_state_var = tk.StringVar(value="OFF")
-        self.mute_state_var = tk.StringVar(value="ON")
 
         self.gui = ModernTkinterApp(master=root, app_logic=self)
         self.queue = Queue()
@@ -56,14 +52,14 @@ class ChessPilot:
 
         self.root.after(100, self.process_queue)
         self.setup_key_bindings()
+        self.toggle_capture() # Start in capturing state
 
     def setup_key_bindings(self):
         self.root.bind('<space>', lambda e: self.play_best_move())
-        self.root.bind('<Key-m>', lambda e: self.mute_toggle.invoke())
-        self.root.bind('<Key-a>', lambda e: self.autoplay_toggle.invoke())
-        self.root.bind('<Control_L>', lambda e: self.drag_click_toggle.invoke())
-        self.root.bind('<Control_R>', lambda e: self.drag_click_toggle.invoke())
-        # Add other key bindings here
+        self.root.bind('<Key-m>', lambda e: self.gui.mute_toggle.invoke())
+        self.root.bind('<Key-a>', lambda e: self.gui.autoplay_toggle.invoke())
+        self.root.bind('<Control_L>', lambda e: self.gui.drag_click_toggle.invoke())
+        self.root.bind('<Control_R>', lambda e: self.gui.drag_click_toggle.invoke())
 
     def process_queue(self):
         try:
@@ -151,6 +147,7 @@ class ChessPilot:
 
     def process_move_thread(self, move):
         if self.is_capturing:
+            self.move_count += 1
             threading.Thread(target=process_move, args=(self, move), daemon=True).start()
         else:
             self.update_status("Enable screen capture first.")
@@ -158,22 +155,19 @@ class ChessPilot:
     def toggle_auto_mode(self, state):
         self.auto_mode = state
         self.gui.play_button.config(state=tk.DISABLED if self.auto_mode else tk.NORMAL)
-        self.autoplay_state_var.set("ON" if self.auto_mode else "OFF")
+        self.update_status(f"Auto-Play {'ON' if self.auto_mode else 'OFF'}")
         if self.auto_mode and self.is_capturing:
             threading.Thread(target=auto_move_loop, args=(self,), daemon=True).start()
 
     def flip_board(self, state):
         self.color_indicator = 'b' if state else 'w'
-        self.side_state_var.set("Black" if self.color_indicator == 'b' else 'White')
-        self.update_status(f"Side set to {self.side_state_var.get()}")
+        self.update_status(f"Side set to {'Black' if self.color_indicator == 'b' else 'White'}")
 
     def toggle_drag_click(self, state):
         self.drag_mode = not state
-        self.drag_click_state_var.set("Click" if self.drag_mode else "Drag")
 
     def toggle_mute(self, state):
         self.mute = state
-        self.mute_state_var.set("OFF" if self.mute else "ON")
 
     def set_volume(self, value):
         self.volume = float(value) / 100
@@ -215,6 +209,14 @@ def main():
 
     root = tk.Tk()
     app = ChessPilot(root)
+
+    # Center window with random offset
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = screen_width - 400 - random.randint(10, 80)
+    y = (screen_height // 2) - 300 + random.randint(-80, 80)
+    root.geometry(f'400x600+{x}+{y}')
+
     root.mainloop()
 
 if __name__ == "__main__":
